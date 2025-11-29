@@ -1,0 +1,16 @@
+{
+  "servers": [
+    { "min_version": "1.21", "java": 21 },
+    { "min_version": "1.20.5", "java": 21 },
+    { "min_version": "1.18", "java": 17 },
+    { "min_version": "1.17", "java": 16 },
+    { "min_version": "1.12", "java": 8 },
+    { "min_version": "0", "java": 8 }
+  ],
+  "proxies": [
+    { "min_version": "3.3", "java": 17 },
+    { "min_version": "3.0", "java": 11 },
+    { "min_version": "0", "java": 11 }
+  ],
+  "default": 17
+}
