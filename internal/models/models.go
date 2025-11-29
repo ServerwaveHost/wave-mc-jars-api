@@ -32,6 +32,7 @@ type Version struct {
 	Type        VersionType `json:"type"`
 	ReleaseTime time.Time   `json:"release_time,omitempty"`
 	Stable      bool        `json:"stable"`
+	Java        int         `json:"java,omitempty"`
 }
 
 // Build represents a specific build of server software for a version
@@ -43,6 +44,7 @@ type Build struct {
 	CreatedAt time.Time  `json:"created_at,omitempty"`
 	Downloads []Download `json:"downloads,omitempty"`
 	Changes   []Change   `json:"changes,omitempty"`
+	Java      int        `json:"java,omitempty"`
 }
 
 // Download represents a downloadable file (internal use - includes upstream URL)
@@ -80,9 +82,9 @@ type SearchFilters struct {
 
 // SearchResult represents a search result item
 type SearchResult struct {
-	Category    Category `json:"category"`
-	Version     string   `json:"version"`
-	LatestBuild *Build   `json:"latest_build,omitempty"`
+	Category Category `json:"category"`
+	Version  string   `json:"version"`
+	Java     int      `json:"java,omitempty"`
 }
 
 // VersionsResponse represents the response for listing versions

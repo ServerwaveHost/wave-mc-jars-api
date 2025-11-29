@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/serverwave/wave-mc-jars-api/internal/cache"
+	"github.com/serverwave/wave-mc-jars-api/internal/java"
 	"github.com/serverwave/wave-mc-jars-api/internal/models"
 	"github.com/serverwave/wave-mc-jars-api/internal/providers"
 )
@@ -80,6 +81,11 @@ func (s *JarsService) GetVersions(ctx context.Context, categoryID string) ([]mod
 		return nil, err
 	}
 
+	// Add Java requirements to each version
+	for i := range versions {
+		versions[i].Java = java.GetRequirement(versions[i].ID, p.GetCategory())
+	}
+
 	_ = s.cache.Set(ctx, cacheKey, versions)
 	return versions, nil
 }
@@ -100,6 +106,11 @@ func (s *JarsService) GetVersionsFiltered(ctx context.Context, categoryID string
 
 		// Filter by stability
 		if opts.StableOnly && !v.Stable {
+			continue
+		}
+
+		// Filter by Java version
+		if opts.Java != nil && v.Java != *opts.Java {
 			continue
 		}
 
@@ -144,6 +155,12 @@ func (s *JarsService) GetBuilds(ctx context.Context, categoryID, version string)
 		return nil, err
 	}
 
+	// Add Java requirements to each build
+	javaVersion := java.GetRequirement(version, p.GetCategory())
+	for i := range builds {
+		builds[i].Java = javaVersion
+	}
+
 	_ = s.cache.Set(ctx, cacheKey, builds)
 	return builds, nil
 }
@@ -183,7 +200,15 @@ func (s *JarsService) GetBuild(ctx context.Context, categoryID, version string, 
 		return nil, err
 	}
 
-	return p.GetBuild(ctx, version, build)
+	b, err := p.GetBuild(ctx, version, build)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add Java requirement
+	b.Java = java.GetRequirement(version, p.GetCategory())
+
+	return b, nil
 }
 
 // GetLatestBuild returns the latest build for a version
@@ -193,7 +218,15 @@ func (s *JarsService) GetLatestBuild(ctx context.Context, categoryID, version st
 		return nil, err
 	}
 
-	return p.GetLatestBuild(ctx, version)
+	b, err := p.GetLatestBuild(ctx, version)
+	if err != nil {
+		return nil, err
+	}
+
+	// Add Java requirement
+	b.Java = java.GetRequirement(version, p.GetCategory())
+
+	return b, nil
 }
 
 // GetDownloadURL returns the download URL for a specific build
@@ -210,6 +243,7 @@ func (s *JarsService) GetDownloadURL(ctx context.Context, categoryID, version st
 type VersionFilterOptions struct {
 	Type       *models.VersionType
 	StableOnly bool
+	Java       *int
 	After      *time.Time
 	Before     *time.Time
 	MinYear    *int
@@ -228,6 +262,7 @@ type SearchOptions struct {
 	Query       string
 	Category    *models.Category
 	VersionType *models.VersionType
+	Java        *int
 	MinYear     *int
 	MaxYear     *int
 	StableOnly  bool
@@ -261,6 +296,11 @@ func (s *JarsService) Search(ctx context.Context, opts SearchOptions) ([]models.
 				continue
 			}
 
+			// Filter by Java version
+			if opts.Java != nil && v.Java != *opts.Java {
+				continue
+			}
+
 			// Filter by year
 			if opts.MinYear != nil && !v.ReleaseTime.IsZero() && v.ReleaseTime.Year() < *opts.MinYear {
 				continue
@@ -289,6 +329,7 @@ func (s *JarsService) Search(ctx context.Context, opts SearchOptions) ([]models.
 			results = append(results, models.SearchResult{
 				Category: p.GetCategory(),
 				Version:  v.ID,
+				Java:     v.Java,
 			})
 		}
 	}

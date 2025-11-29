@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/serverwave/wave-mc-jars-api/internal/models"
@@ -184,6 +185,11 @@ func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, erro
 		})
 	}
 
+	// Paper API returns oldest first, so reverse to get newest first
+	for i, j := 0, len(versions)-1; i < j; i, j = i+1, j-1 {
+		versions[i], versions[j] = versions[j], versions[i]
+	}
+
 	return versions, nil
 }
 
@@ -229,6 +235,11 @@ func (p *PaperProvider) GetBuilds(ctx context.Context, version string) ([]models
 		})
 	}
 
+	// Sort builds by number descending (newest first)
+	sort.Slice(builds, func(i, j int) bool {
+		return builds[i].Number > builds[j].Number
+	})
+
 	return builds, nil
 }
 
@@ -257,8 +268,8 @@ func (p *PaperProvider) GetLatestBuild(ctx context.Context, version string) (*mo
 		return nil, fmt.Errorf("no builds found for version %s", version)
 	}
 
-	// Return the last build (highest number)
-	return &builds[len(builds)-1], nil
+	// First build is now the latest (sorted descending)
+	return &builds[0], nil
 }
 
 func (p *PaperProvider) GetDownloadURL(ctx context.Context, version string, build int) (string, error) {

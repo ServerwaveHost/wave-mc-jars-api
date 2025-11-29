@@ -1,14 +1,10 @@
 # Build stage
-FROM golang:1.25-alpine AS builder
+FROM golang:1.25 AS builder
 
 WORKDIR /app
 
-# Copy go mod files
-COPY go.mod go.sum ./
-RUN go mod download
-
-# Copy source code
 COPY . .
+RUN go mod download
 
 # Build
 RUN CGO_ENABLED=0 go build -o main .
@@ -16,8 +12,8 @@ RUN CGO_ENABLED=0 go build -o main .
 # Final stage
 FROM gcr.io/distroless/static-debian12
 
-# Copy binary from builder
 COPY --from=builder /app/main .
+COPY --from=builder /app/java.json .
 
 # Expose port
 EXPOSE 8080

@@ -100,10 +100,8 @@ func (p *BungeeCordProvider) doRequest(ctx context.Context, url string, target i
 }
 
 // BungeeCord doesn't have traditional "versions" like MC - it's continuously updated
-// We'll treat Minecraft version compatibility as "versions" based on known mappings
+// We provide a "latest" version that always gets the newest build
 func (p *BungeeCordProvider) GetVersions(_ context.Context) ([]models.Version, error) {
-	// BungeeCord supports multiple MC versions simultaneously
-	// We provide a "latest" version that always gets the newest build
 	versions := []models.Version{
 		{
 			ID:          "latest",
@@ -171,9 +169,9 @@ func (p *BungeeCordProvider) GetBuilds(ctx context.Context, version string) ([]m
 		})
 	}
 
-	// Sort by build number ascending
+	// Sort by build number descending (newest first)
 	sort.Slice(builds, func(i, j int) bool {
-		return builds[i].Number < builds[j].Number
+		return builds[i].Number > builds[j].Number
 	})
 
 	return builds, nil

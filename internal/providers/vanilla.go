@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/serverwave/wave-mc-jars-api/internal/models"
@@ -127,6 +128,7 @@ func (p *VanillaProvider) GetVersions(ctx context.Context) ([]models.Version, er
 
 	versions := make([]models.Version, 0, len(p.manifest.Versions))
 	for _, v := range p.manifest.Versions {
+		// Parse release time - Mojang uses ISO 8601 format
 		releaseTime, _ := time.Parse(time.RFC3339, v.ReleaseTime)
 
 		vType := models.VersionTypeRelease
@@ -146,6 +148,11 @@ func (p *VanillaProvider) GetVersions(ctx context.Context) ([]models.Version, er
 			Stable:      v.Type == "release",
 		})
 	}
+
+	// Mojang API already returns newest first, but let's ensure it
+	sort.Slice(versions, func(i, j int) bool {
+		return versions[i].ReleaseTime.After(versions[j].ReleaseTime)
+	})
 
 	return versions, nil
 }
@@ -177,17 +184,17 @@ func (p *VanillaProvider) fetchVersionDetail(ctx context.Context, versionURL str
 	return &detail, nil
 }
 
-func (p *VanillaProvider) findVersionURL(version string) (string, error) {
+func (p *VanillaProvider) findVersion(version string) (*MojangVersionEntry, error) {
 	if p.manifest == nil {
-		return "", fmt.Errorf("manifest not loaded")
+		return nil, fmt.Errorf("manifest not loaded")
 	}
 
-	for _, v := range p.manifest.Versions {
-		if v.ID == version {
-			return v.URL, nil
+	for i := range p.manifest.Versions {
+		if p.manifest.Versions[i].ID == version {
+			return &p.manifest.Versions[i], nil
 		}
 	}
-	return "", fmt.Errorf("version %s not found", version)
+	return nil, fmt.Errorf("version %s not found", version)
 }
 
 func (p *VanillaProvider) GetBuilds(ctx context.Context, version string) ([]models.Build, error) {
@@ -195,12 +202,12 @@ func (p *VanillaProvider) GetBuilds(ctx context.Context, version string) ([]mode
 		return nil, err
 	}
 
-	versionURL, err := p.findVersionURL(version)
+	versionEntry, err := p.findVersion(version)
 	if err != nil {
 		return nil, err
 	}
 
-	detail, err := p.fetchVersionDetail(ctx, versionURL)
+	detail, err := p.fetchVersionDetail(ctx, versionEntry.URL)
 	if err != nil {
 		return nil, err
 	}
@@ -210,10 +217,14 @@ func (p *VanillaProvider) GetBuilds(ctx context.Context, version string) ([]mode
 		return nil, fmt.Errorf("no server download available for version %s", version)
 	}
 
+	// Parse release time for the build
+	releaseTime, _ := time.Parse(time.RFC3339, versionEntry.ReleaseTime)
+
 	build := models.Build{
-		Number:  1,
-		Version: version,
-		Stable:  true,
+		Number:    1,
+		Version:   version,
+		Stable:    true,
+		CreatedAt: releaseTime,
 		Downloads: []models.Download{
 			{
 				Name:        fmt.Sprintf("server-%s.jar", version),

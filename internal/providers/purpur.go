@@ -5,6 +5,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"net/http"
+	"sort"
 	"time"
 
 	"github.com/serverwave/wave-mc-jars-api/internal/models"
@@ -35,13 +36,14 @@ type PurpurBuildsInfo struct {
 
 // PurpurBuildResponse represents a single build
 type PurpurBuildResponse struct {
-	Project  string         `json:"project"`
-	Version  string         `json:"version"`
-	Build    string         `json:"build"`
-	Result   string         `json:"result"`
-	Duration int64          `json:"duration"`
-	Commits  []PurpurCommit `json:"commits"`
-	Md5      string         `json:"md5"`
+	Project   string         `json:"project"`
+	Version   string         `json:"version"`
+	Build     string         `json:"build"`
+	Result    string         `json:"result"`
+	Timestamp int64          `json:"timestamp"`
+	Duration  int64          `json:"duration"`
+	Commits   []PurpurCommit `json:"commits"`
+	Md5       string         `json:"md5"`
 }
 
 // PurpurCommit represents a commit
@@ -126,6 +128,11 @@ func (p *PurpurProvider) GetVersions(ctx context.Context) ([]models.Version, err
 		})
 	}
 
+	// Purpur API returns oldest first, so reverse to get newest first
+	for i, j := 0, len(versions)-1; i < j; i, j = i+1, j-1 {
+		versions[i], versions[j] = versions[j], versions[i]
+	}
+
 	return versions, nil
 }
 
@@ -157,6 +164,11 @@ func (p *PurpurProvider) GetBuilds(ctx context.Context, version string) ([]model
 		})
 	}
 
+	// Sort builds by number descending (newest first)
+	sort.Slice(builds, func(i, j int) bool {
+		return builds[i].Number > builds[j].Number
+	})
+
 	return builds, nil
 }
 
@@ -177,12 +189,19 @@ func (p *PurpurProvider) GetBuild(ctx context.Context, version string, build int
 		})
 	}
 
+	// Parse timestamp (milliseconds)
+	var createdAt time.Time
+	if buildResp.Timestamp > 0 {
+		createdAt = time.UnixMilli(buildResp.Timestamp)
+	}
+
 	downloadURL := fmt.Sprintf("%s/%s/%d/download", purpurAPIBaseURL, version, build)
 
 	return &models.Build{
-		Number:  build,
-		Version: version,
-		Stable:  buildResp.Result == "SUCCESS",
+		Number:    build,
+		Version:   version,
+		Stable:    buildResp.Result == "SUCCESS",
+		CreatedAt: createdAt,
 		Downloads: []models.Download{
 			{
 				Name:        fmt.Sprintf("purpur-%s-%d.jar", version, build),

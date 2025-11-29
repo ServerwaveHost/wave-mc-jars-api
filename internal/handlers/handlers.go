@@ -72,7 +72,7 @@ func (h *Handler) GetCategory(c *gin.Context) {
 }
 
 // GetVersions handles GET /categories/:category/versions
-// Query params: type, stable, after, before, min_year, max_year
+// Query params: type, stable, java, after, before, min_year, max_year
 func (h *Handler) GetVersions(c *gin.Context) {
 	categoryID := c.Param("category")
 
@@ -84,6 +84,13 @@ func (h *Handler) GetVersions(c *gin.Context) {
 	if vType := c.Query("type"); vType != "" {
 		versionType := models.VersionType(vType)
 		opts.Type = &versionType
+	}
+
+	// Parse java filter
+	if javaStr := c.Query("java"); javaStr != "" {
+		if javaVersion, err := strconv.Atoi(javaStr); err == nil {
+			opts.Java = &javaVersion
+		}
 	}
 
 	// Parse date filters
@@ -160,9 +167,9 @@ func (h *Handler) GetBuilds(c *gin.Context) {
 		return
 	}
 
-	// Find latest stable
+	// Find latest stable (first stable since sorted newest first)
 	var latestStable *models.Build
-	for i := len(builds) - 1; i >= 0; i-- {
+	for i := range builds {
 		if builds[i].Stable {
 			latestStable = &builds[i]
 			break
@@ -279,7 +286,9 @@ func (h *Handler) GetDownload(c *gin.Context) {
 		})
 		return
 	}
-	defer resp.Body.Close()
+	defer func() {
+		_ = resp.Body.Close()
+	}()
 
 	if resp.StatusCode != http.StatusOK {
 		c.JSON(http.StatusBadGateway, APIResponse{
@@ -306,11 +315,11 @@ func (h *Handler) GetDownload(c *gin.Context) {
 
 	// Stream the response body directly to client (no disk storage)
 	c.Status(http.StatusOK)
-	io.Copy(c.Writer, resp.Body)
+	_, _ = io.Copy(c.Writer, resp.Body)
 }
 
 // Search handles GET /search
-// Query params: q, category, type, stable, after, before, min_year, max_year
+// Query params: q, category, type, stable, java, after, before, min_year, max_year
 func (h *Handler) Search(c *gin.Context) {
 	opts := service.SearchOptions{
 		Query:      c.Query("q"),
@@ -325,6 +334,13 @@ func (h *Handler) Search(c *gin.Context) {
 	if vType := c.Query("type"); vType != "" {
 		versionType := models.VersionType(vType)
 		opts.VersionType = &versionType
+	}
+
+	// Parse java filter
+	if javaStr := c.Query("java"); javaStr != "" {
+		if javaVersion, err := strconv.Atoi(javaStr); err == nil {
+			opts.Java = &javaVersion
+		}
 	}
 
 	if minYear := c.Query("min_year"); minYear != "" {

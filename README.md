@@ -7,6 +7,7 @@ A unified REST API for downloading Minecraft server JARs from multiple official 
 - **Unified API**: Single API to access multiple Minecraft server software
 - **Proxy Downloads**: Downloads streamed through our API (no storage, no upstream URLs exposed)
 - **Latest Build Support**: Use `/latest` to always get the most recent build
+- **Java Version Info**: Automatic Java version requirements for each build
 - **Filtering**: Filter versions by date, type (release/snapshot), and stability
 - **Redis Caching**: Optional Redis support with configurable TTL (falls back to memory cache)
 - **Official Sources Only**: Always fetches from official APIs
@@ -36,8 +37,6 @@ A unified REST API for downloading Minecraft server JARs from multiple official 
 
 ## Quick Start
 
-### Running Locally
-
 ```bash
 git clone https://github.com/serverwave/wave-mc-jars-api.git
 cd wave-mc-jars-api
@@ -52,27 +51,6 @@ go mod tidy
 go run main.go
 ```
 
-### Using Docker
-
-```bash
-docker build -t wave-mc-jars-api .
-docker run -p 8080:8080 wave-mc-jars-api
-```
-
-### With Redis
-
-```bash
-# Start Redis
-docker run -d -p 6379:6379 redis
-
-# Configure .env
-REDIS_URL=redis://localhost:6379
-CACHE_TTL=600
-
-# Run the API
-go run main.go
-```
-
 ## Configuration
 
 Create a `.env` file or set environment variables:
@@ -83,12 +61,37 @@ PORT=8080
 GIN_MODE=release
 
 # Redis (optional - falls back to memory cache)
-REDIS_URL=redis://localhost:6379
-REDIS_PASSWORD=
-REDIS_DB=0
+# Format: redis://[[user]:password@]host:port[/db]
+REDIS_URL=
 
 # Cache TTL in seconds (default: 600 = 10 minutes)
 CACHE_TTL=600
+
+# Java version mapping config file path (default: java.json)
+JAVA_CONFIG_PATH=java.json
+```
+
+### Java Version Mapping
+
+Edit `java.json` to configure Java version requirements:
+
+```json
+{
+  "servers": [
+    { "min_version": "1.21", "java": 21 },
+    { "min_version": "1.20.5", "java": 21 },
+    { "min_version": "1.18", "java": 17 },
+    { "min_version": "1.17", "java": 16 },
+    { "min_version": "1.12", "java": 8 },
+    { "min_version": "0", "java": 8 }
+  ],
+  "proxies": [
+    { "min_version": "3.3", "java": 17 },
+    { "min_version": "3.0", "java": 11 },
+    { "min_version": "0", "java": 11 }
+  ],
+  "default": 17
+}
 ```
 
 ## API Reference
@@ -99,20 +102,11 @@ CACHE_TTL=600
 # Download latest Paper 1.21.1
 curl -OJ http://localhost:8080/categories/paper/versions/1.21.1/builds/latest/download
 
-# Download latest Vanilla
-curl -OJ http://localhost:8080/categories/vanilla/versions/1.21.1/builds/latest/download
-
-# Download latest BungeeCord
-curl -OJ http://localhost:8080/categories/bungeecord/versions/latest/builds/latest/download
-
-# Get build info
-curl http://localhost:8080/categories/purpur/versions/1.21.1/builds/latest
+# Get build info with Java requirements
+curl http://localhost:8080/categories/paper/versions/1.21.1/builds/latest
 
 # Filter versions by type and date
 curl "http://localhost:8080/categories/vanilla/versions?type=release&after=2024-01-01"
-
-# Search with filters
-curl "http://localhost:8080/search?q=1.21&category=paper&stable=true"
 ```
 
 ### Endpoints
@@ -145,15 +139,6 @@ GET /categories/{category}/versions
 | `min_year` | int | Minimum release year |
 | `max_year` | int | Maximum release year |
 
-Example:
-```bash
-# Get only release versions from 2024
-curl "http://localhost:8080/categories/vanilla/versions?type=release&min_year=2024"
-
-# Get snapshots between dates
-curl "http://localhost:8080/categories/vanilla/versions?type=snapshot&after=2024-06-01&before=2024-12-31"
-```
-
 #### List Builds
 
 ```http
@@ -177,6 +162,25 @@ Use `latest` to get the latest build:
 
 ```http
 GET /categories/paper/versions/1.21.1/builds/latest
+```
+
+**Response includes Java version:**
+```json
+{
+  "success": true,
+  "data": {
+    "number": 123,
+    "version": "1.21.1",
+    "stable": true,
+    "downloads": [
+      {
+        "name": "paper-1.21.1-123.jar",
+        "sha256": "abc123..."
+      }
+    ],
+    "java": 21
+  }
+}
 ```
 
 #### Download JAR
@@ -208,34 +212,29 @@ GET /search
 ```
 wave-mc-jars-api/
 ├── main.go
+├── java.json              # Java version mapping config
 ├── .env.example
 ├── internal/
 │   ├── cache/
-│   │   └── cache.go          # Redis + memory cache
+│   │   └── cache.go
 │   ├── handlers/
-│   │   └── handlers.go       # HTTP handlers
+│   │   └── handlers.go
+│   ├── java/
+│   │   └── java.go
 │   ├── models/
-│   │   └── models.go         # Data models
+│   │   └── models.go
 │   ├── providers/
-│   │   ├── provider.go       # Provider interface
-│   │   ├── registry.go       # Provider registry
-│   │   ├── vanilla.go        # Mojang/Vanilla
-│   │   ├── paper.go          # Paper/Folia/Velocity/Waterfall
-│   │   ├── purpur.go         # Purpur
-│   │   └── bungeecord.go     # BungeeCord (Jenkins)
+│   │   ├── provider.go
+│   │   ├── registry.go
+│   │   ├── vanilla.go
+│   │   ├── paper.go
+│   │   ├── purpur.go
+│   │   └── bungeecord.go
 │   └── service/
-│       └── service.go        # Business logic
+│       └── service.go
 ├── go.mod
 └── Dockerfile
 ```
-
-## How It Works
-
-1. Client requests download from our API
-2. API resolves the build (including `latest`)
-3. API streams the JAR directly from upstream to client
-4. **No file is stored on our server**
-5. **Upstream URLs are never exposed to clients**
 
 ## License
 
