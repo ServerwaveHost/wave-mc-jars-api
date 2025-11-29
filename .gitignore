@@ -26,7 +26,19 @@ go.work.sum
 
 # env file
 .env
+.env.*
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Binary output
+/server
+/wave-mc-jars-api
+
+# OS files
+.DS_Store
+Thumbs.db
