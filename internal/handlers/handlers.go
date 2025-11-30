@@ -33,6 +33,18 @@ type APIResponse struct {
 	Error   string      `json:"error,omitempty"`
 }
 
+// resolveVersion resolves "latest" to the actual latest stable version ID
+func (h *Handler) resolveVersion(c *gin.Context, categoryID, version string) (string, error) {
+	if version == "latest" {
+		latestVersion, err := h.svc.GetLatestStableVersion(c.Request.Context(), categoryID)
+		if err != nil {
+			return "", err
+		}
+		return latestVersion.ID, nil
+	}
+	return version, nil
+}
+
 // HealthCheck handles health check requests
 func (h *Handler) HealthCheck(c *gin.Context) {
 	c.JSON(http.StatusOK, APIResponse{
@@ -138,9 +150,20 @@ func (h *Handler) GetVersions(c *gin.Context) {
 
 // GetBuilds handles GET /categories/:category/versions/:version/builds
 // Query params: stable, after, before
+// Note: version can be "latest" to get the latest stable version
 func (h *Handler) GetBuilds(c *gin.Context) {
 	categoryID := c.Param("category")
 	version := c.Param("version")
+
+	// Resolve "latest" to actual version
+	resolvedVersion, err := h.resolveVersion(c, categoryID, version)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
 
 	opts := service.BuildFilterOptions{
 		StableOnly: c.Query("stable") == "true",
@@ -158,7 +181,7 @@ func (h *Handler) GetBuilds(c *gin.Context) {
 		}
 	}
 
-	builds, err := h.svc.GetBuildsFiltered(c.Request.Context(), categoryID, version, opts)
+	builds, err := h.svc.GetBuildsFiltered(c.Request.Context(), categoryID, resolvedVersion, opts)
 	if err != nil {
 		c.JSON(http.StatusNotFound, APIResponse{
 			Success: false,
@@ -178,7 +201,7 @@ func (h *Handler) GetBuilds(c *gin.Context) {
 
 	response := models.BuildsResponse{
 		Category:     models.Category(categoryID),
-		Version:      version,
+		Version:      resolvedVersion,
 		Builds:       builds,
 		LatestStable: latestStable,
 	}
@@ -189,16 +212,27 @@ func (h *Handler) GetBuilds(c *gin.Context) {
 }
 
 // GetBuild handles GET /categories/:category/versions/:version/builds/:build
+// Note: version can be "latest" to get the latest stable version
+// Note: build can be "latest" to get the latest build
 func (h *Handler) GetBuild(c *gin.Context) {
 	categoryID := c.Param("category")
 	version := c.Param("version")
 	buildStr := c.Param("build")
 
+	// Resolve "latest" to actual version
+	resolvedVersion, err := h.resolveVersion(c, categoryID, version)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
 	var build *models.Build
-	var err error
 
 	if buildStr == "latest" {
-		build, err = h.svc.GetLatestBuild(c.Request.Context(), categoryID, version)
+		build, err = h.svc.GetLatestBuild(c.Request.Context(), categoryID, resolvedVersion)
 	} else {
 		buildNum, parseErr := strconv.Atoi(buildStr)
 		if parseErr != nil {
@@ -208,7 +242,7 @@ func (h *Handler) GetBuild(c *gin.Context) {
 			})
 			return
 		}
-		build, err = h.svc.GetBuild(c.Request.Context(), categoryID, version, buildNum)
+		build, err = h.svc.GetBuild(c.Request.Context(), categoryID, resolvedVersion, buildNum)
 	}
 
 	if err != nil {
@@ -226,16 +260,27 @@ func (h *Handler) GetBuild(c *gin.Context) {
 
 // GetDownload handles GET /categories/:category/versions/:version/builds/:build/download
 // This proxies the download through our API, streaming directly from source to client
+// Note: version can be "latest" to get the latest stable version
+// Note: build can be "latest" to get the latest build
 func (h *Handler) GetDownload(c *gin.Context) {
 	categoryID := c.Param("category")
 	version := c.Param("version")
 	buildStr := c.Param("build")
 
+	// Resolve "latest" to actual version
+	resolvedVersion, err := h.resolveVersion(c, categoryID, version)
+	if err != nil {
+		c.JSON(http.StatusNotFound, APIResponse{
+			Success: false,
+			Error:   err.Error(),
+		})
+		return
+	}
+
 	var build *models.Build
-	var err error
 
 	if buildStr == "latest" {
-		build, err = h.svc.GetLatestBuild(c.Request.Context(), categoryID, version)
+		build, err = h.svc.GetLatestBuild(c.Request.Context(), categoryID, resolvedVersion)
 	} else {
 		buildNum, parseErr := strconv.Atoi(buildStr)
 		if parseErr != nil {
@@ -245,7 +290,7 @@ func (h *Handler) GetDownload(c *gin.Context) {
 			})
 			return
 		}
-		build, err = h.svc.GetBuild(c.Request.Context(), categoryID, version, buildNum)
+		build, err = h.svc.GetBuild(c.Request.Context(), categoryID, resolvedVersion, buildNum)
 	}
 
 	if err != nil {
@@ -275,7 +320,7 @@ func (h *Handler) GetDownload(c *gin.Context) {
 		})
 		return
 	}
-	req.Header.Set("User-Agent", "wave-mc-jars-api/1.0.0 (https://github.com/ServerwaveHost/wave-mc-jars-api)")
+	req.Header.Set("User-Agent", "jarvault/1.0.0 (https://github.com/ServerwaveHost/wave-mc-jars-api)")
 
 	// Execute request
 	resp, err := h.httpClient.Do(req)
@@ -301,7 +346,7 @@ func (h *Handler) GetDownload(c *gin.Context) {
 	// Determine filename
 	filename := download.Name
 	if filename == "" {
-		filename = fmt.Sprintf("%s-%s-%d.jar", categoryID, version, build.Number)
+		filename = fmt.Sprintf("%s-%s-%d.jar", categoryID, resolvedVersion, build.Number)
 	}
 
 	// Set response headers

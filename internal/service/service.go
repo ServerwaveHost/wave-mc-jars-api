@@ -229,6 +229,22 @@ func (s *JarsService) GetLatestBuild(ctx context.Context, categoryID, version st
 	return b, nil
 }
 
+// GetLatestStableVersion returns the latest stable version for a category
+func (s *JarsService) GetLatestStableVersion(ctx context.Context, categoryID string) (*models.Version, error) {
+	versions, err := s.GetVersions(ctx, categoryID)
+	if err != nil {
+		return nil, err
+	}
+
+	for _, v := range versions {
+		if v.Stable {
+			return &v, nil
+		}
+	}
+
+	return nil, fmt.Errorf("no stable version found for %s", categoryID)
+}
+
 // GetDownloadURL returns the download URL for a specific build
 func (s *JarsService) GetDownloadURL(ctx context.Context, categoryID, version string, build int) (string, error) {
 	p, err := s.registry.Get(categoryID)

@@ -57,21 +57,6 @@ func main() {
 	r.Use(gin.Logger())
 	r.Use(gin.Recovery())
 
-	// CORS middleware
-	r.Use(func(c *gin.Context) {
-		c.Header("Access-Control-Allow-Origin", "*")
-		c.Header("Access-Control-Allow-Methods", "GET, OPTIONS")
-		c.Header("Access-Control-Allow-Headers", "Accept, Content-Type")
-		c.Header("Access-Control-Max-Age", "300")
-
-		if c.Request.Method == "OPTIONS" {
-			c.AbortWithStatus(http.StatusNoContent)
-			return
-		}
-
-		c.Next()
-	})
-
 	// Health routes
 	r.GET("/", h.HealthCheck)
 	r.GET("/health", h.HealthCheck)
