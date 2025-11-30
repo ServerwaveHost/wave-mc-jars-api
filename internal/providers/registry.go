@@ -25,7 +25,6 @@ func NewRegistry(config ProviderConfig) *Registry {
 
 	// Register proxy providers
 	r.Register(NewVelocityProvider(config))
-	r.Register(NewWaterfallProvider(config))
 	r.Register(NewBungeeCordProvider(config))
 
 	return r

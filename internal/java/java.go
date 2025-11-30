@@ -7,7 +7,7 @@ import (
 	"strings"
 	"sync"
 
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
 )
 
 // JavaConfig represents the Java version configuration
@@ -78,7 +78,6 @@ func GetRequirement(version string, category models.Category) int {
 // isProxy returns true if the category is a proxy server
 func isProxy(category models.Category) bool {
 	return category == models.CategoryVelocity ||
-		category == models.CategoryWaterfall ||
 		category == models.CategoryBungeeCord
 }
 

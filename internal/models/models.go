@@ -13,7 +13,6 @@ const (
 	CategoryFolia      Category = "folia"
 	CategoryVelocity   Category = "velocity"
 	CategoryBungeeCord Category = "bungeecord"
-	CategoryWaterfall  Category = "waterfall"
 )
 
 // VersionType represents the type of version (release, snapshot, etc.)

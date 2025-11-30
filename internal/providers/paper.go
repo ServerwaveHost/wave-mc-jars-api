@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strings"
 	"time"
 
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
 )
 
 const (
@@ -103,18 +104,6 @@ func NewVelocityProvider(config ProviderConfig) *PaperProvider {
 	}
 }
 
-// NewWaterfallProvider creates a new Waterfall provider (uses Paper API)
-func NewWaterfallProvider(config ProviderConfig) *PaperProvider {
-	return &PaperProvider{
-		client: &http.Client{
-			Timeout: time.Duration(config.Timeout) * time.Second,
-		},
-		config:    config,
-		projectID: "waterfall",
-		category:  models.CategoryWaterfall,
-	}
-}
-
 func (p *PaperProvider) GetID() string {
 	return p.projectID
 }
@@ -127,8 +116,6 @@ func (p *PaperProvider) GetName() string {
 		return "Folia"
 	case "velocity":
 		return "Velocity"
-	case "waterfall":
-		return "Waterfall"
 	default:
 		return p.projectID
 	}
@@ -168,6 +155,31 @@ func (p *PaperProvider) doRequest(ctx context.Context, url string, target interf
 	return nil
 }
 
+// isSnapshotVersion checks if a version string indicates a snapshot/dev version
+func isSnapshotVersion(version string) bool {
+	v := strings.ToUpper(version)
+	return strings.Contains(v, "SNAPSHOT") ||
+		strings.Contains(v, "-DEV") ||
+		strings.Contains(v, "-BETA") ||
+		strings.Contains(v, "-ALPHA") ||
+		strings.Contains(v, "-RC")
+}
+
+// getVersionType determines the version type from version string
+func getVersionType(version string) models.VersionType {
+	v := strings.ToUpper(version)
+	if strings.Contains(v, "SNAPSHOT") || strings.Contains(v, "-DEV") {
+		return models.VersionTypeSnapshot
+	}
+	if strings.Contains(v, "-BETA") {
+		return models.VersionTypeBeta
+	}
+	if strings.Contains(v, "-ALPHA") {
+		return models.VersionTypeAlpha
+	}
+	return models.VersionTypeRelease
+}
+
 func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, error) {
 	url := fmt.Sprintf("%s/projects/%s", paperAPIBaseURL, p.projectID)
 
@@ -178,10 +190,14 @@ func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, erro
 
 	versions := make([]models.Version, 0, len(project.Versions))
 	for _, v := range project.Versions {
+		// Determine version type and stability from version string
+		versionType := getVersionType(v)
+		isStable := !isSnapshotVersion(v)
+
 		versions = append(versions, models.Version{
 			ID:     v,
-			Type:   models.VersionTypeRelease,
-			Stable: true,
+			Type:   versionType,
+			Stable: isStable, // Will be further refined when we fetch builds info
 		})
 	}
 
@@ -189,6 +205,68 @@ func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, erro
 	for i, j := 0, len(versions)-1; i < j; i, j = i+1, j-1 {
 		versions[i], versions[j] = versions[j], versions[i]
 	}
+
+	// Fetch build info for each version to get release dates and stability
+	// We do this in parallel for performance
+	type versionInfo struct {
+		index       int
+		releaseTime time.Time
+		hasStable   bool
+	}
+
+	results := make(chan versionInfo, len(versions))
+
+	for i := range versions {
+		go func(idx int, version models.Version) {
+			info := versionInfo{index: idx, hasStable: version.Stable}
+
+			// Fetch builds to get the latest build time and check for stable builds
+			buildsURL := fmt.Sprintf("%s/projects/%s/versions/%s/builds", paperAPIBaseURL, p.projectID, version.ID)
+			var buildsResp PaperBuildsResponse
+			if err := p.doRequest(ctx, buildsURL, &buildsResp); err == nil && len(buildsResp.Builds) > 0 {
+				// Get the latest build time as the version release time
+				latestBuild := buildsResp.Builds[len(buildsResp.Builds)-1]
+				if t, err := time.Parse(time.RFC3339, latestBuild.Time); err == nil {
+					info.releaseTime = t
+				}
+
+				// For non-snapshot versions, check if any build is stable (channel == "default")
+				// For snapshot versions, they're inherently not stable
+				if !isSnapshotVersion(version.ID) {
+					info.hasStable = false
+					for _, b := range buildsResp.Builds {
+						if b.Channel == "default" {
+							info.hasStable = true
+							break
+						}
+					}
+				} else {
+					info.hasStable = false
+				}
+			}
+
+			results <- info
+		}(i, versions[i])
+	}
+
+	// Collect results
+	for range versions {
+		info := <-results
+		if !info.releaseTime.IsZero() {
+			versions[info.index].ReleaseTime = info.releaseTime
+		}
+		versions[info.index].Stable = info.hasStable
+	}
+
+	// Re-sort by release time (newest first) if we have dates
+	sort.Slice(versions, func(i, j int) bool {
+		// If both have release times, sort by time
+		if !versions[i].ReleaseTime.IsZero() && !versions[j].ReleaseTime.IsZero() {
+			return versions[i].ReleaseTime.After(versions[j].ReleaseTime)
+		}
+		// Otherwise keep original order (already reversed)
+		return i < j
+	})
 
 	return versions, nil
 }

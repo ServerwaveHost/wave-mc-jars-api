@@ -1,14 +1,17 @@
-# Wave MC Jars API
+# MCJars API
 
-A unified REST API for downloading Minecraft server JARs from multiple official sources.
+A unified REST API for downloading Minecraft server JARs from multiple official sources. Powered by [Serverwave](https://www.serverwave.com).
+
+**Live at: [mcjars.serverwave.com](https://mcjars.serverwave.com)**
 
 ## Features
 
 - **Unified API**: Single API to access multiple Minecraft server software
+- **Web Interface**: Modern React SPA for browsing and downloading
 - **Proxy Downloads**: Downloads streamed through our API (no storage, no upstream URLs exposed)
 - **Latest Build Support**: Use `/latest` to always get the most recent build
 - **Java Version Info**: Automatic Java version requirements for each build
-- **Filtering**: Filter versions by date, type (release/snapshot), and stability
+- **Filtering**: Filter versions by date, type (release/snapshot), Java version, and stability
 - **Redis Caching**: Optional Redis support with configurable TTL (falls back to memory cache)
 - **Official Sources Only**: Always fetches from official APIs
 
@@ -37,6 +40,8 @@ A unified REST API for downloading Minecraft server JARs from multiple official 
 
 ## Quick Start
 
+### API Server
+
 ```bash
 git clone https://github.com/serverwave/wave-mc-jars-api.git
 cd wave-mc-jars-api
@@ -49,6 +54,18 @@ go mod tidy
 
 # Run the server
 go run main.go
+```
+
+### Web Interface
+
+```bash
+cd web
+
+# Install dependencies
+npm install
+
+# Start dev server (http://localhost:3000)
+npm run dev
 ```
 
 ## Configuration
@@ -99,14 +116,14 @@ Edit `java.json` to configure Java version requirements:
 ### Quick Examples
 
 ```bash
-# Download latest Paper 1.21.1
-curl -OJ http://localhost:8080/categories/paper/versions/1.21.1/builds/latest/download
+# Download latest Paper 1.21.4
+curl -OJ https://mcjars.serverwave.com/api/categories/paper/versions/1.21.4/builds/latest/download
 
 # Get build info with Java requirements
-curl http://localhost:8080/categories/paper/versions/1.21.1/builds/latest
+curl https://mcjars.serverwave.com/api/categories/paper/versions/1.21.4/builds/latest
 
-# Filter versions by type and date
-curl "http://localhost:8080/categories/vanilla/versions?type=release&after=2024-01-01"
+# Filter versions by type and Java
+curl "https://mcjars.serverwave.com/api/categories/vanilla/versions?type=release&java=21"
 ```
 
 ### Endpoints
@@ -134,6 +151,7 @@ GET /categories/{category}/versions
 |-----------|------|-------------|
 | `type` | string | Filter by type: `release`, `snapshot`, `beta`, `alpha` |
 | `stable` | bool | Set to `true` for stable versions only |
+| `java` | int | Filter by Java version (8, 11, 16, 17, 21) |
 | `after` | date | Versions released after this date (YYYY-MM-DD) |
 | `before` | date | Versions released before this date (YYYY-MM-DD) |
 | `min_year` | int | Minimum release year |
@@ -161,7 +179,7 @@ GET /categories/{category}/versions/{version}/builds/{build}
 Use `latest` to get the latest build:
 
 ```http
-GET /categories/paper/versions/1.21.1/builds/latest
+GET /categories/paper/versions/1.21.4/builds/latest
 ```
 
 **Response includes Java version:**
@@ -170,11 +188,11 @@ GET /categories/paper/versions/1.21.1/builds/latest
   "success": true,
   "data": {
     "number": 123,
-    "version": "1.21.1",
+    "version": "1.21.4",
     "stable": true,
     "downloads": [
       {
-        "name": "paper-1.21.1-123.jar",
+        "name": "paper-1.21.4-123.jar",
         "sha256": "abc123..."
       }
     ],
@@ -202,6 +220,7 @@ GET /search
 | `category` | string | Filter by category |
 | `type` | string | Filter by version type |
 | `stable` | bool | Stable versions only |
+| `java` | int | Filter by Java version |
 | `after` | date | Released after date |
 | `before` | date | Released before date |
 | `min_year` | int | Minimum release year |
@@ -212,7 +231,7 @@ GET /search
 ```
 wave-mc-jars-api/
 ├── main.go
-├── java.json              # Java version mapping config
+├── java.json              # Java version mapping
 ├── .env.example
 ├── internal/
 │   ├── cache/
@@ -232,9 +251,19 @@ wave-mc-jars-api/
 │   │   └── bungeecord.go
 │   └── service/
 │       └── service.go
+├── web/                   # React SPA
+│   ├── src/
+│   │   ├── components/
+│   │   ├── pages/
+│   │   └── lib/
+│   └── package.json
 ├── go.mod
 └── Dockerfile
 ```
+
+## Related
+
+- [Serverwave](https://www.serverwave.com) - Game server hosting at $0.01/GB per hour
 
 ## License
 

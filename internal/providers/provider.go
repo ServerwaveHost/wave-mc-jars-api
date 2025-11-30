@@ -3,7 +3,7 @@ package providers
 import (
 	"context"
 
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
 )
 
 // Provider defines the interface for fetching Minecraft server JARs from different sources

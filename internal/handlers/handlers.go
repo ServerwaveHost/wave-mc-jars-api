@@ -7,9 +7,9 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/service"
 	"github.com/gin-gonic/gin"
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
-	"github.com/serverwave/wave-mc-jars-api/internal/service"
 )
 
 // Handler contains all HTTP handlers
@@ -275,7 +275,7 @@ func (h *Handler) GetDownload(c *gin.Context) {
 		})
 		return
 	}
-	req.Header.Set("User-Agent", "wave-mc-jars-api/1.0.0 (https://github.com/serverwave/wave-mc-jars-api)")
+	req.Header.Set("User-Agent", "wave-mc-jars-api/1.0.0 (https://github.com/ServerwaveHost/wave-mc-jars-api)")
 
 	// Execute request
 	resp, err := h.httpClient.Do(req)

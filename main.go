@@ -9,12 +9,12 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/cache"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/handlers"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/providers"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/service"
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
-	"github.com/serverwave/wave-mc-jars-api/internal/cache"
-	"github.com/serverwave/wave-mc-jars-api/internal/handlers"
-	"github.com/serverwave/wave-mc-jars-api/internal/providers"
-	"github.com/serverwave/wave-mc-jars-api/internal/service"
 )
 
 func main() {

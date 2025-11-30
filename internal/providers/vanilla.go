@@ -8,7 +8,7 @@ import (
 	"sort"
 	"time"
 
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
 )
 
 const (

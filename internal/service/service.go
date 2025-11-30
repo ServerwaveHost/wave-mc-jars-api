@@ -7,10 +7,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/serverwave/wave-mc-jars-api/internal/cache"
-	"github.com/serverwave/wave-mc-jars-api/internal/java"
-	"github.com/serverwave/wave-mc-jars-api/internal/models"
-	"github.com/serverwave/wave-mc-jars-api/internal/providers"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/cache"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/java"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
+	"github.com/ServerwaveHost/wave-mc-jars-api/internal/providers"
 )
 
 // JarsService provides high-level operations for Minecraft JAR management
@@ -347,7 +347,6 @@ func getCategoryDescription(cat models.Category) string {
 		models.CategoryFolia:      "Paper fork with regionized multithreading",
 		models.CategoryVelocity:   "Modern, high-performance Minecraft server proxy",
 		models.CategoryBungeeCord: "Minecraft server proxy by SpigotMC",
-		models.CategoryWaterfall:  "BungeeCord fork with improvements",
 	}
 
 	if desc, ok := descriptions[cat]; ok {

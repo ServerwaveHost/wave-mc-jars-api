@@ -1,4 +1,4 @@
-module github.com/serverwave/wave-mc-jars-api
+module github.com/ServerwaveHost/wave-mc-jars-api
 
 go 1.24.0
 
