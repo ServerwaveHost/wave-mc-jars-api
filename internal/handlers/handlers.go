@@ -84,12 +84,13 @@ func (h *Handler) GetCategory(c *gin.Context) {
 }
 
 // GetVersions handles GET /categories/:category/versions
-// Query params: type, stable, java, after, before, min_year, max_year
+// Query params: type, stable, supported, java, after, before, min_year, max_year
 func (h *Handler) GetVersions(c *gin.Context) {
 	categoryID := c.Param("category")
 
 	opts := service.VersionFilterOptions{
-		StableOnly: c.Query("stable") == "true",
+		StableOnly:    c.Query("stable") == "true",
+		SupportedOnly: c.Query("supported") == "true",
 	}
 
 	// Parse type filter
@@ -149,7 +150,7 @@ func (h *Handler) GetVersions(c *gin.Context) {
 }
 
 // GetBuilds handles GET /categories/:category/versions/:version/builds
-// Query params: stable, after, before
+// Query params: stable, channel, after, before
 // Note: version can be "latest" to get the latest stable version
 func (h *Handler) GetBuilds(c *gin.Context) {
 	categoryID := c.Param("category")
@@ -167,6 +168,11 @@ func (h *Handler) GetBuilds(c *gin.Context) {
 
 	opts := service.BuildFilterOptions{
 		StableOnly: c.Query("stable") == "true",
+	}
+
+	// Parse channel filter (ALPHA, BETA, STABLE, RECOMMENDED)
+	if channel := c.Query("channel"); channel != "" {
+		opts.Channel = &channel
 	}
 
 	// Parse date filters

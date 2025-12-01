@@ -17,6 +17,9 @@ type Provider interface {
 	// GetCategory returns the category this provider belongs to
 	GetCategory() models.Category
 
+	// GetFilters returns the available filters for this provider
+	GetFilters() models.CategoryFilters
+
 	// GetVersions returns all available Minecraft versions for this provider
 	GetVersions(ctx context.Context) ([]models.Version, error)
 
@@ -42,7 +45,7 @@ type ProviderConfig struct {
 // DefaultConfig returns the default provider configuration
 func DefaultConfig() ProviderConfig {
 	return ProviderConfig{
-		UserAgent: "wave-mc-jars-api/1.0.0 (https://github.com/serverwave/wave-mc-jars-api)",
+		UserAgent: "JarVault/1.0.0 (https://github.com/ServerwaveHost/wave-mc-jars-api; contact@serverwave.com)",
 		Timeout:   30,
 	}
 }

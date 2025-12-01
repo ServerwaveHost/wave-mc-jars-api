@@ -69,6 +69,13 @@ func (p *BungeeCordProvider) GetCategory() models.Category {
 	return models.CategoryBungeeCord
 }
 
+func (p *BungeeCordProvider) GetFilters() models.CategoryFilters {
+	return models.CategoryFilters{
+		// BungeeCord has minimal filtering - it's a single "latest" version with builds
+		Stable: true,
+	}
+}
+
 func (p *BungeeCordProvider) doRequest(ctx context.Context, url string, target interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -107,6 +114,7 @@ func (p *BungeeCordProvider) GetVersions(_ context.Context) ([]models.Version, e
 			ID:          "latest",
 			Type:        models.VersionTypeRelease,
 			Stable:      true,
+			Supported:   true,
 			ReleaseTime: time.Now(),
 		},
 	}

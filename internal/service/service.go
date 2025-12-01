@@ -37,6 +37,7 @@ func (s *JarsService) GetCategories(_ context.Context) []models.CategoryInfo {
 			ID:          p.GetCategory(),
 			Name:        p.GetName(),
 			Description: getCategoryDescription(p.GetCategory()),
+			Filters:     p.GetFilters(),
 		})
 	}
 
@@ -59,6 +60,7 @@ func (s *JarsService) GetCategory(_ context.Context, categoryID string) (*models
 		ID:          p.GetCategory(),
 		Name:        p.GetName(),
 		Description: getCategoryDescription(p.GetCategory()),
+		Filters:     p.GetFilters(),
 	}, nil
 }
 
@@ -81,9 +83,11 @@ func (s *JarsService) GetVersions(ctx context.Context, categoryID string) ([]mod
 		return nil, err
 	}
 
-	// Add Java requirements to each version
+	// Add Java requirements to each version (if not already set by provider)
 	for i := range versions {
-		versions[i].Java = java.GetRequirement(versions[i].ID, p.GetCategory())
+		if versions[i].Java == 0 {
+			versions[i].Java = java.GetRequirement(versions[i].ID, p.GetCategory())
+		}
 	}
 
 	_ = s.cache.Set(ctx, cacheKey, versions)
@@ -106,6 +110,11 @@ func (s *JarsService) GetVersionsFiltered(ctx context.Context, categoryID string
 
 		// Filter by stability
 		if opts.StableOnly && !v.Stable {
+			continue
+		}
+
+		// Filter by supported
+		if opts.SupportedOnly && !v.Supported {
 			continue
 		}
 
@@ -179,6 +188,11 @@ func (s *JarsService) GetBuildsFiltered(ctx context.Context, categoryID, version
 			continue
 		}
 
+		// Filter by channel (Paper API v3: ALPHA, BETA, STABLE, RECOMMENDED)
+		if opts.Channel != nil && b.Channel != "" && strings.ToUpper(b.Channel) != strings.ToUpper(*opts.Channel) {
+			continue
+		}
+
 		// Filter by date range
 		if opts.After != nil && !b.CreatedAt.IsZero() && b.CreatedAt.Before(*opts.After) {
 			continue
@@ -230,19 +244,27 @@ func (s *JarsService) GetLatestBuild(ctx context.Context, categoryID, version st
 }
 
 // GetLatestStableVersion returns the latest stable version for a category
+// Falls back to latest version if no stable version exists (e.g., Velocity only has SNAPSHOTs)
 func (s *JarsService) GetLatestStableVersion(ctx context.Context, categoryID string) (*models.Version, error) {
 	versions, err := s.GetVersions(ctx, categoryID)
 	if err != nil {
 		return nil, err
 	}
 
+	if len(versions) == 0 {
+		return nil, fmt.Errorf("no versions found for %s", categoryID)
+	}
+
+	// Try to find a stable version first
 	for _, v := range versions {
 		if v.Stable {
 			return &v, nil
 		}
 	}
 
-	return nil, fmt.Errorf("no stable version found for %s", categoryID)
+	// No stable version found, return the latest (first in list) as fallback
+	// This handles cases like Velocity where all versions are SNAPSHOTs
+	return &versions[0], nil
 }
 
 // GetDownloadURL returns the download URL for a specific build
@@ -257,18 +279,20 @@ func (s *JarsService) GetDownloadURL(ctx context.Context, categoryID, version st
 
 // VersionFilterOptions contains version filter parameters
 type VersionFilterOptions struct {
-	Type       *models.VersionType
-	StableOnly bool
-	Java       *int
-	After      *time.Time
-	Before     *time.Time
-	MinYear    *int
-	MaxYear    *int
+	Type          *models.VersionType
+	StableOnly    bool
+	SupportedOnly bool
+	Java          *int
+	After         *time.Time
+	Before        *time.Time
+	MinYear       *int
+	MaxYear       *int
 }
 
 // BuildFilterOptions contains build filter parameters
 type BuildFilterOptions struct {
 	StableOnly bool
+	Channel    *string // ALPHA, BETA, STABLE, RECOMMENDED (Paper API v3)
 	After      *time.Time
 	Before     *time.Time
 }

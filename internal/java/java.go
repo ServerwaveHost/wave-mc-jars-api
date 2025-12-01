@@ -3,6 +3,7 @@ package java
 import (
 	"encoding/json"
 	"os"
+	"regexp"
 	"strconv"
 	"strings"
 	"sync"
@@ -27,6 +28,9 @@ var (
 	config     *JavaConfig
 	configOnce sync.Once
 	configErr  error
+
+	// Weekly snapshot pattern: YYwWWx (e.g., 25w46a, 24w33a)
+	weeklySnapshotRegex = regexp.MustCompile(`^(\d{2})w(\d{2})[a-z]$`)
 )
 
 // loadConfig loads the Java configuration from file
@@ -55,6 +59,45 @@ func GetRequirement(version string, category models.Category) int {
 	cfg, err := loadConfig()
 	if err != nil {
 		return 17 // Safe default
+	}
+
+	lowerVersion := strings.ToLower(version)
+
+	// Handle legacy Minecraft versions (alpha, beta, classic)
+	// These are ancient versions from 2009-2011 that used Java 5/6/7
+	// We'll return Java 8 as it's the oldest we reasonably support
+	if strings.HasPrefix(lowerVersion, "a") || // Alpha (e.g., a1.2.6)
+		strings.HasPrefix(lowerVersion, "b") || // Beta (e.g., b1.8.1)
+		strings.HasPrefix(lowerVersion, "c") || // Classic (e.g., c0.30)
+		strings.HasPrefix(lowerVersion, "rd-") || // Pre-classic (e.g., rd-132211)
+		strings.HasPrefix(lowerVersion, "inf-") || // Infdev
+		strings.Contains(lowerVersion, "indev") {
+		return 8
+	}
+
+	// Handle weekly snapshots (e.g., 25w46a, 24w33a)
+	// Format: YYwWWx where YY=year (20XX), WW=week, x=letter
+	if matches := weeklySnapshotRegex.FindStringSubmatch(lowerVersion); matches != nil {
+		year, _ := strconv.Atoi(matches[1])
+		week, _ := strconv.Atoi(matches[2])
+
+		// Map year/week to Java version based on Minecraft development timeline
+		// 2024+ (year >= 24): Java 21 (1.20.5+ era)
+		// 2023 (year == 23): Mostly Java 17, late 2023 Java 21
+		// 2022 and earlier: Java 17 or earlier
+		if year >= 24 {
+			return 21
+		} else if year == 23 && week >= 40 {
+			// Late 2023 snapshots started requiring Java 21
+			return 21
+		} else if year >= 21 {
+			// 2021-2023 snapshots use Java 17
+			return 17
+		} else if year >= 17 {
+			// 2017-2020 use Java 8
+			return 8
+		}
+		return 8
 	}
 
 	// Determine which requirements to use
@@ -95,6 +138,11 @@ func compareVersions(v1, v2 string) int {
 	parts1 := parseVersionParts(v1)
 	parts2 := parseVersionParts(v2)
 
+	// If we couldn't parse v1, it's likely a special format - return -1 to use default
+	if len(parts1) == 0 {
+		return -1
+	}
+
 	// Compare each part
 	maxLen := len(parts1)
 	if len(parts2) > maxLen {
@@ -125,8 +173,13 @@ func compareVersions(v1, v2 string) int {
 
 // parseVersionParts extracts numeric parts from a version string
 func parseVersionParts(version string) []int {
-	// Remove common prefixes and suffixes
+	// Remove common prefixes
 	version = strings.TrimPrefix(version, "v")
+
+	// Must start with a digit to be a valid semantic version
+	if len(version) == 0 || version[0] < '0' || version[0] > '9' {
+		return nil
+	}
 
 	// Split by dots
 	parts := strings.Split(version, ".")

@@ -31,6 +31,7 @@ type Version struct {
 	Type        VersionType `json:"type"`
 	ReleaseTime time.Time   `json:"release_time,omitempty"`
 	Stable      bool        `json:"stable"`
+	Supported   bool        `json:"supported"`
 	Java        int         `json:"java,omitempty"`
 }
 
@@ -64,9 +65,20 @@ type Change struct {
 
 // CategoryInfo provides information about a category
 type CategoryInfo struct {
-	ID          Category `json:"id"`
-	Name        string   `json:"name"`
-	Description string   `json:"description"`
+	ID          Category        `json:"id"`
+	Name        string          `json:"name"`
+	Description string          `json:"description"`
+	Filters     CategoryFilters `json:"filters"`
+}
+
+// CategoryFilters describes available filters for a category
+type CategoryFilters struct {
+	Types     []VersionType `json:"types,omitempty"`    // Available version types
+	Channels  []string      `json:"channels,omitempty"` // Available build channels (Paper API v3)
+	Stable    bool          `json:"stable"`             // Supports stable filter
+	Supported bool          `json:"supported"`          // Supports supported filter
+	Java      bool          `json:"java"`               // Supports java version filter
+	Year      bool          `json:"year"`               // Supports year filter
 }
 
 // SearchFilters represents filters for searching versions

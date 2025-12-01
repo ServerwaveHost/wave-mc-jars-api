@@ -87,6 +87,15 @@ func (p *VanillaProvider) GetCategory() models.Category {
 	return models.CategoryVanilla
 }
 
+func (p *VanillaProvider) GetFilters() models.CategoryFilters {
+	return models.CategoryFilters{
+		Types:  []models.VersionType{models.VersionTypeRelease, models.VersionTypeSnapshot, models.VersionTypeBeta, models.VersionTypeAlpha},
+		Stable: true,
+		Java:   true,
+		Year:   true,
+	}
+}
+
 func (p *VanillaProvider) fetchManifest(ctx context.Context) error {
 	// Cache for 5 minutes
 	if p.manifest != nil && time.Since(p.cacheTime) < 5*time.Minute {
@@ -146,6 +155,7 @@ func (p *VanillaProvider) GetVersions(ctx context.Context) ([]models.Version, er
 			Type:        vType,
 			ReleaseTime: releaseTime,
 			Stable:      v.Type == "release",
+			// Supported is not set for Vanilla - Mojang doesn't have this concept
 		})
 	}
 

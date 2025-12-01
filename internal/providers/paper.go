@@ -6,6 +6,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 	"strings"
 	"time"
 
@@ -13,54 +14,57 @@ import (
 )
 
 const (
-	paperAPIBaseURL = "https://api.papermc.io/v2"
+	fillAPIBaseURL = "https://fill.papermc.io/v3"
 )
 
-// PaperProjectResponse represents a project from Paper API
-type PaperProjectResponse struct {
-	ProjectID     string   `json:"project_id"`
-	ProjectName   string   `json:"project_name"`
-	VersionGroups []string `json:"version_groups"`
-	Versions      []string `json:"versions"`
+// FillVersionsResponse represents the /v3/projects/{project}/versions response
+type FillVersionsResponse struct {
+	Versions []struct {
+		Builds  []int `json:"builds"`
+		Version struct {
+			ID   string `json:"id"`
+			Java *struct {
+				Version struct {
+					Minimum int `json:"minimum"`
+				} `json:"version"`
+			} `json:"java"`
+			Support *struct {
+				Status string `json:"status"`
+				End    string `json:"end"`
+			} `json:"support"`
+		} `json:"version"`
+	} `json:"versions"`
 }
 
-// PaperBuildsResponse represents builds for a version
-type PaperBuildsResponse struct {
-	ProjectID   string       `json:"project_id"`
-	ProjectName string       `json:"project_name"`
-	Version     string       `json:"version"`
-	Builds      []PaperBuild `json:"builds"`
+// FillBuild represents a build from Fill API v3
+type FillBuild struct {
+	ID        int                          `json:"id"`
+	Channel   string                       `json:"channel"`
+	Time      string                       `json:"time"`
+	Downloads map[string]FillDownloadEntry `json:"downloads"`
+	Changes   []FillChange                 `json:"changes"`
 }
 
-// PaperBuild represents a single build
-type PaperBuild struct {
-	Build     int            `json:"build"`
-	Time      string         `json:"time"`
-	Channel   string         `json:"channel"`
-	Promoted  bool           `json:"promoted"`
-	Changes   []PaperChange  `json:"changes"`
-	Downloads PaperDownloads `json:"downloads"`
+// FillDownloadEntry represents a download entry
+type FillDownloadEntry struct {
+	URL    string `json:"url"`
+	SHA256 string `json:"sha256"`
 }
 
-// PaperChange represents a change in a build
-type PaperChange struct {
+// FillChange represents a change/commit
+type FillChange struct {
 	Commit  string `json:"commit"`
 	Summary string `json:"summary"`
 	Message string `json:"message"`
 }
 
-// PaperDownloads contains download info
-type PaperDownloads struct {
-	Application PaperDownloadEntry `json:"application"`
+// VersionInfo holds support status and Java version
+type VersionInfo struct {
+	Supported bool
+	Java      int
 }
 
-// PaperDownloadEntry represents a download entry
-type PaperDownloadEntry struct {
-	Name   string `json:"name"`
-	SHA256 string `json:"sha256"`
-}
-
-// PaperProvider implements Provider for PaperMC
+// PaperProvider implements Provider for PaperMC projects using Fill API v3
 type PaperProvider struct {
 	client    *http.Client
 	config    ProviderConfig
@@ -80,7 +84,7 @@ func NewPaperProvider(config ProviderConfig) *PaperProvider {
 	}
 }
 
-// NewFoliaProvider creates a new Folia provider (uses Paper API)
+// NewFoliaProvider creates a new Folia provider (uses Fill API)
 func NewFoliaProvider(config ProviderConfig) *PaperProvider {
 	return &PaperProvider{
 		client: &http.Client{
@@ -92,7 +96,7 @@ func NewFoliaProvider(config ProviderConfig) *PaperProvider {
 	}
 }
 
-// NewVelocityProvider creates a new Velocity provider (uses Paper API)
+// NewVelocityProvider creates a new Velocity provider (uses Fill API)
 func NewVelocityProvider(config ProviderConfig) *PaperProvider {
 	return &PaperProvider{
 		client: &http.Client{
@@ -125,6 +129,23 @@ func (p *PaperProvider) GetCategory() models.Category {
 	return p.category
 }
 
+func (p *PaperProvider) GetFilters() models.CategoryFilters {
+	filters := models.CategoryFilters{
+		Types:     []models.VersionType{models.VersionTypeRelease, models.VersionTypeSnapshot},
+		Channels:  []string{"ALPHA", "BETA", "STABLE", "RECOMMENDED"},
+		Stable:    true,
+		Supported: true,
+		Java:      true,
+		Year:      true,
+	}
+
+	if p.projectID == "velocity" {
+		filters.Types = []models.VersionType{models.VersionTypeSnapshot}
+	}
+
+	return filters
+}
+
 func (p *PaperProvider) doRequest(ctx context.Context, url string, target interface{}) error {
 	req, err := http.NewRequestWithContext(ctx, "GET", url, nil)
 	if err != nil {
@@ -155,6 +176,41 @@ func (p *PaperProvider) doRequest(ctx context.Context, url string, target interf
 	return nil
 }
 
+// fetchAllVersionInfo fetches support status and Java version for all versions in a single API call
+func (p *PaperProvider) fetchAllVersionInfo(ctx context.Context) (map[string]VersionInfo, error) {
+	url := fmt.Sprintf("%s/projects/%s/versions", fillAPIBaseURL, p.projectID)
+
+	var versionsResp FillVersionsResponse
+	if err := p.doRequest(ctx, url, &versionsResp); err != nil {
+		return nil, err
+	}
+
+	results := make(map[string]VersionInfo)
+	for _, v := range versionsResp.Versions {
+		info := VersionInfo{}
+
+		// Check support status
+		if v.Version.Support != nil && strings.ToUpper(v.Version.Support.Status) == "SUPPORTED" {
+			info.Supported = true
+		}
+
+		// Get Java version
+		if v.Version.Java != nil {
+			info.Java = v.Version.Java.Version.Minimum
+		}
+
+		results[v.Version.ID] = info
+	}
+
+	return results, nil
+}
+
+// isStableChannel checks if a channel is considered stable
+func isStableChannel(channel string) bool {
+	ch := strings.ToUpper(channel)
+	return ch == "STABLE" || ch == "RECOMMENDED"
+}
+
 // isSnapshotVersion checks if a version string indicates a snapshot/dev version
 func isSnapshotVersion(version string) bool {
 	v := strings.ToUpper(version)
@@ -162,13 +218,14 @@ func isSnapshotVersion(version string) bool {
 		strings.Contains(v, "-DEV") ||
 		strings.Contains(v, "-BETA") ||
 		strings.Contains(v, "-ALPHA") ||
-		strings.Contains(v, "-RC")
+		strings.Contains(v, "-RC") ||
+		strings.Contains(v, "-PRE")
 }
 
 // getVersionType determines the version type from version string
 func getVersionType(version string) models.VersionType {
 	v := strings.ToUpper(version)
-	if strings.Contains(v, "SNAPSHOT") || strings.Contains(v, "-DEV") {
+	if strings.Contains(v, "SNAPSHOT") || strings.Contains(v, "-DEV") || strings.Contains(v, "-PRE") || strings.Contains(v, "-RC") {
 		return models.VersionTypeSnapshot
 	}
 	if strings.Contains(v, "-BETA") {
@@ -180,68 +237,144 @@ func getVersionType(version string) models.VersionType {
 	return models.VersionTypeRelease
 }
 
-func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, error) {
-	url := fmt.Sprintf("%s/projects/%s", paperAPIBaseURL, p.projectID)
+// parseSemanticVersion parses a version string into comparable parts
+func parseSemanticVersion(version string) (major, minor, patch int, preRelease string, preReleaseNum int) {
+	v := strings.ToLower(version)
 
-	var project PaperProjectResponse
-	if err := p.doRequest(ctx, url, &project); err != nil {
+	parts := strings.SplitN(v, "-", 2)
+	mainPart := parts[0]
+	if len(parts) > 1 {
+		prePart := parts[1]
+		for i, c := range prePart {
+			if c >= '0' && c <= '9' {
+				preRelease = prePart[:i]
+				preReleaseNum, _ = strconv.Atoi(prePart[i:])
+				break
+			}
+		}
+		if preRelease == "" {
+			preRelease = prePart
+		}
+	}
+
+	versionParts := strings.Split(mainPart, ".")
+	if len(versionParts) >= 1 {
+		major, _ = strconv.Atoi(versionParts[0])
+	}
+	if len(versionParts) >= 2 {
+		minor, _ = strconv.Atoi(versionParts[1])
+	}
+	if len(versionParts) >= 3 {
+		patch, _ = strconv.Atoi(versionParts[2])
+	}
+
+	return
+}
+
+// compareVersions compares two version strings semantically
+func compareVersions(v1, v2 string) int {
+	maj1, min1, pat1, pre1, preNum1 := parseSemanticVersion(v1)
+	maj2, min2, pat2, pre2, preNum2 := parseSemanticVersion(v2)
+
+	if maj1 != maj2 {
+		if maj1 > maj2 {
+			return 1
+		}
+		return -1
+	}
+	if min1 != min2 {
+		if min1 > min2 {
+			return 1
+		}
+		return -1
+	}
+	if pat1 != pat2 {
+		if pat1 > pat2 {
+			return 1
+		}
+		return -1
+	}
+
+	if pre1 == "" && pre2 != "" {
+		return 1
+	}
+	if pre1 != "" && pre2 == "" {
+		return -1
+	}
+
+	preOrder := map[string]int{
+		"snapshot": 1,
+		"alpha":    2,
+		"beta":     3,
+		"pre":      4,
+		"rc":       5,
+	}
+
+	order1 := preOrder[pre1]
+	order2 := preOrder[pre2]
+	if order1 != order2 {
+		if order1 > order2 {
+			return 1
+		}
+		return -1
+	}
+
+	if preNum1 != preNum2 {
+		if preNum1 > preNum2 {
+			return 1
+		}
+		return -1
+	}
+
+	return 0
+}
+
+func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, error) {
+	// Fetch all version info (support status + Java version) in a single API call
+	versionInfoMap, err := p.fetchAllVersionInfo(ctx)
+	if err != nil {
 		return nil, err
 	}
 
-	versions := make([]models.Version, 0, len(project.Versions))
-	for _, v := range project.Versions {
-		// Determine version type and stability from version string
-		versionType := getVersionType(v)
-		isStable := !isSnapshotVersion(v)
+	versions := make([]models.Version, 0, len(versionInfoMap))
+	for versionID, info := range versionInfoMap {
+		versionType := getVersionType(versionID)
 
 		versions = append(versions, models.Version{
-			ID:     v,
-			Type:   versionType,
-			Stable: isStable, // Will be further refined when we fetch builds info
+			ID:        versionID,
+			Type:      versionType,
+			Stable:    !isSnapshotVersion(versionID),
+			Supported: info.Supported,
+			Java:      info.Java,
 		})
 	}
 
-	// Paper API returns oldest first, so reverse to get newest first
-	for i, j := 0, len(versions)-1; i < j; i, j = i+1, j-1 {
-		versions[i], versions[j] = versions[j], versions[i]
-	}
-
-	// Fetch build info for each version to get release dates and stability
-	// We do this in parallel for performance
-	type versionInfo struct {
+	// Fetch build info for each version to get release dates and check for stable builds
+	type versionBuildInfo struct {
 		index       int
 		releaseTime time.Time
 		hasStable   bool
 	}
 
-	results := make(chan versionInfo, len(versions))
+	results := make(chan versionBuildInfo, len(versions))
 
 	for i := range versions {
 		go func(idx int, version models.Version) {
-			info := versionInfo{index: idx, hasStable: version.Stable}
+			info := versionBuildInfo{index: idx, hasStable: false}
 
-			// Fetch builds to get the latest build time and check for stable builds
-			buildsURL := fmt.Sprintf("%s/projects/%s/versions/%s/builds", paperAPIBaseURL, p.projectID, version.ID)
-			var buildsResp PaperBuildsResponse
-			if err := p.doRequest(ctx, buildsURL, &buildsResp); err == nil && len(buildsResp.Builds) > 0 {
-				// Get the latest build time as the version release time
-				latestBuild := buildsResp.Builds[len(buildsResp.Builds)-1]
+			buildsURL := fmt.Sprintf("%s/projects/%s/versions/%s/builds", fillAPIBaseURL, p.projectID, version.ID)
+			var builds []FillBuild
+			if err := p.doRequest(ctx, buildsURL, &builds); err == nil && len(builds) > 0 {
+				latestBuild := builds[0]
 				if t, err := time.Parse(time.RFC3339, latestBuild.Time); err == nil {
 					info.releaseTime = t
 				}
 
-				// For non-snapshot versions, check if any build is stable (channel == "default")
-				// For snapshot versions, they're inherently not stable
-				if !isSnapshotVersion(version.ID) {
-					info.hasStable = false
-					for _, b := range buildsResp.Builds {
-						if b.Channel == "default" {
-							info.hasStable = true
-							break
-						}
+				for _, b := range builds {
+					if isStableChannel(b.Channel) {
+						info.hasStable = true
+						break
 					}
-				} else {
-					info.hasStable = false
 				}
 			}
 
@@ -249,7 +382,6 @@ func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, erro
 		}(i, versions[i])
 	}
 
-	// Collect results
 	for range versions {
 		info := <-results
 		if !info.releaseTime.IsZero() {
@@ -258,29 +390,24 @@ func (p *PaperProvider) GetVersions(ctx context.Context) ([]models.Version, erro
 		versions[info.index].Stable = info.hasStable
 	}
 
-	// Re-sort by release time (newest first) if we have dates
+	// Sort by semantic version (newest first)
 	sort.Slice(versions, func(i, j int) bool {
-		// If both have release times, sort by time
-		if !versions[i].ReleaseTime.IsZero() && !versions[j].ReleaseTime.IsZero() {
-			return versions[i].ReleaseTime.After(versions[j].ReleaseTime)
-		}
-		// Otherwise keep original order (already reversed)
-		return i < j
+		return compareVersions(versions[i].ID, versions[j].ID) > 0
 	})
 
 	return versions, nil
 }
 
 func (p *PaperProvider) GetBuilds(ctx context.Context, version string) ([]models.Build, error) {
-	url := fmt.Sprintf("%s/projects/%s/versions/%s/builds", paperAPIBaseURL, p.projectID, version)
+	url := fmt.Sprintf("%s/projects/%s/versions/%s/builds", fillAPIBaseURL, p.projectID, version)
 
-	var buildsResp PaperBuildsResponse
-	if err := p.doRequest(ctx, url, &buildsResp); err != nil {
+	var fillBuilds []FillBuild
+	if err := p.doRequest(ctx, url, &fillBuilds); err != nil {
 		return nil, err
 	}
 
-	builds := make([]models.Build, 0, len(buildsResp.Builds))
-	for _, b := range buildsResp.Builds {
+	builds := make([]models.Build, 0, len(fillBuilds))
+	for _, b := range fillBuilds {
 		buildTime, _ := time.Parse(time.RFC3339, b.Time)
 
 		changes := make([]models.Change, 0, len(b.Changes))
@@ -291,29 +418,37 @@ func (p *PaperProvider) GetBuilds(ctx context.Context, version string) ([]models
 			})
 		}
 
-		downloadURL := fmt.Sprintf("%s/projects/%s/versions/%s/builds/%d/downloads/%s",
-			paperAPIBaseURL, p.projectID, version, b.Build, b.Downloads.Application.Name)
+		var downloadURL, downloadName, sha256 string
+		if dl, ok := b.Downloads["server:default"]; ok {
+			downloadURL = dl.URL
+			sha256 = dl.SHA256
+			downloadName = fmt.Sprintf("%s-%s-%d.jar", p.projectID, version, b.ID)
+		} else if dl, ok := b.Downloads["proxy:default"]; ok {
+			downloadURL = dl.URL
+			sha256 = dl.SHA256
+			downloadName = fmt.Sprintf("%s-%s-%d.jar", p.projectID, version, b.ID)
+		}
 
-		downloads := []models.Download{
-			{
-				Name:        b.Downloads.Application.Name,
-				SHA256:      b.Downloads.Application.SHA256,
+		downloads := []models.Download{}
+		if downloadURL != "" {
+			downloads = append(downloads, models.Download{
+				Name:        downloadName,
+				SHA256:      sha256,
 				UpstreamURL: downloadURL,
-			},
+			})
 		}
 
 		builds = append(builds, models.Build{
-			Number:    b.Build,
+			Number:    b.ID,
 			Version:   version,
 			Channel:   b.Channel,
-			Stable:    b.Channel == "default",
+			Stable:    isStableChannel(b.Channel),
 			CreatedAt: buildTime,
 			Downloads: downloads,
 			Changes:   changes,
 		})
 	}
 
-	// Sort builds by number descending (newest first)
 	sort.Slice(builds, func(i, j int) bool {
 		return builds[i].Number > builds[j].Number
 	})
@@ -346,7 +481,12 @@ func (p *PaperProvider) GetLatestBuild(ctx context.Context, version string) (*mo
 		return nil, fmt.Errorf("no builds found for version %s", version)
 	}
 
-	// First build is now the latest (sorted descending)
+	for i := range builds {
+		if builds[i].Stable {
+			return &builds[i], nil
+		}
+	}
+
 	return &builds[0], nil
 }
 

@@ -7,6 +7,7 @@ import (
 	"net/http"
 	"sort"
 	"strconv"
+	"strings"
 	"time"
 
 	"github.com/ServerwaveHost/wave-mc-jars-api/internal/models"
@@ -82,6 +83,15 @@ func (p *PurpurProvider) GetName() string {
 
 func (p *PurpurProvider) GetCategory() models.Category {
 	return models.CategoryPurpur
+}
+
+func (p *PurpurProvider) GetFilters() models.CategoryFilters {
+	return models.CategoryFilters{
+		Types:  []models.VersionType{models.VersionTypeRelease}, // Purpur only has releases
+		Stable: true,
+		Java:   true,
+		Year:   true,
+	}
 }
 
 func (p *PurpurProvider) doRequest(ctx context.Context, url string, target interface{}) error {
@@ -170,15 +180,43 @@ func (p *PurpurProvider) GetVersions(ctx context.Context) ([]models.Version, err
 		}
 	}
 
-	// Re-sort by release time (newest first) if we have dates
+	// Re-sort by semantic version (newest first)
 	sort.Slice(versions, func(i, j int) bool {
-		if !versions[i].ReleaseTime.IsZero() && !versions[j].ReleaseTime.IsZero() {
-			return versions[i].ReleaseTime.After(versions[j].ReleaseTime)
-		}
-		return i < j
+		return comparePurpurVersions(versions[i].ID, versions[j].ID) > 0
 	})
 
 	return versions, nil
+}
+
+// comparePurpurVersions compares two Minecraft version strings
+// Returns: 1 if v1 > v2, -1 if v1 < v2, 0 if equal
+func comparePurpurVersions(v1, v2 string) int {
+	parts1 := strings.Split(v1, ".")
+	parts2 := strings.Split(v2, ".")
+
+	maxLen := len(parts1)
+	if len(parts2) > maxLen {
+		maxLen = len(parts2)
+	}
+
+	for i := 0; i < maxLen; i++ {
+		var n1, n2 int
+		if i < len(parts1) {
+			n1, _ = strconv.Atoi(parts1[i])
+		}
+		if i < len(parts2) {
+			n2, _ = strconv.Atoi(parts2[i])
+		}
+
+		if n1 > n2 {
+			return 1
+		}
+		if n1 < n2 {
+			return -1
+		}
+	}
+
+	return 0
 }
 
 func (p *PurpurProvider) GetBuilds(ctx context.Context, version string) ([]models.Build, error) {
